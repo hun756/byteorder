@@ -112,10 +112,9 @@ include(Packaging)           # CPack packaging (DEB, RPM, NSIS, ZIP, TGZ)
 # ============================================================================
 # Generated Configuration Headers
 # ============================================================================
-# Process Config.h.in to create a header with version info.
-# This lets your C++ code access the project version at compile time:
+# Process Config.h.in to produce a header with compile-time version constants.
 #   #include "configs/ProjectConfig.h"
-#   std::cout << cpp_project_template_VERSION << std::endl;
+#   std::cout << byteorder_VERSION << std::endl;
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/configs/Config.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/configs/ProjectConfig.h"
