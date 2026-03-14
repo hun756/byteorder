@@ -43,8 +43,8 @@ static void demo_uint64_literals()
     using namespace endian::literals;
     std::cout << "\n--- user-defined literals ---\n";
 
-    const auto le = 0xDEADBEEFull_le;
-    const auto be = 0xDEADBEEFull_be;
+    const auto le = 0xDEADBEEF_le;
+    const auto be = 0xDEADBEEF_be;
 
     std::cout << std::hex << std::uppercase;
     std::cout << "0xDEADBEEF_le .native() = 0x" << le.native() << '\n';

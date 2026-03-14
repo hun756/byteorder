@@ -82,8 +82,8 @@ static void demo_literals()
 {
     std::cout << "\n=== User-defined literals ===\n";
 
-    auto le_val = 0xCAFEBABEull_le;
-    auto be_val = 0xCAFEBABEull_be;
+    auto le_val = 0xCAFEBABE_le;
+    auto be_val = 0xCAFEBABE_be;
 
     std::cout << "0xCAFEBABE_le native: 0x" << std::hex << le_val.native() << '\n';
     std::cout << "0xCAFEBABE_be native: 0x" << std::hex << be_val.native() << std::dec << '\n';

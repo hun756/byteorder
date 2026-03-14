@@ -208,8 +208,8 @@ TEST(Literals, LeAndBeLiterals)
 {
     using namespace endian::literals;
 
-    auto le_val = 0xCAFEBABEull_le;
-    auto be_val = 0xCAFEBABEull_be;
+    auto le_val = 0xCAFEBABE_le;
+    auto be_val = 0xCAFEBABE_be;
 
     EXPECT_EQ(le_val.native(), uint64_t{0xCAFEBABE});
     EXPECT_EQ(be_val.native(), uint64_t{0xCAFEBABE});

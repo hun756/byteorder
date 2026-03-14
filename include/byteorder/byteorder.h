@@ -10,10 +10,16 @@
 #include <string_view>
 #include <type_traits>
 
+#if defined(_MSC_VER)
+#  include <intrin.h>      // __cpuid, _byteswap_ushort/ulong/uint64
+#endif
 #if defined(__x86_64__) || defined(_M_X64)
-#include <immintrin.h>
+#  include <immintrin.h>   // AVX2 (_mm256_*)
+#  if defined(__GNUC__) || defined(__clang__)
+#    include <cpuid.h>     // __get_cpuid
+#  endif
 #elif defined(__ARM_NEON)
-#include <arm_neon.h>
+#  include <arm_neon.h>
 #endif
 
 // ============================================================================
@@ -149,27 +155,19 @@ template <ByteSwappable T>
         return v;
     }
 
+    // Runtime SIMD paths — skipped entirely during constant evaluation
 #if defined(__x86_64__) || defined(_M_X64)
-    if (cpu_features::has_avx2())
+    if (!std::is_constant_evaluated() && cpu_features::has_avx2())
     {
         if constexpr (sizeof(T) == 2)
-        {
-            if (!std::is_constant_evaluated())
-                return static_cast<T>(_byteswap_ushort(static_cast<uint16_t>(v)));
-        }
+            return static_cast<T>(_byteswap_ushort(static_cast<uint16_t>(v)));
         if constexpr (sizeof(T) == 4)
-        {
-            if (!std::is_constant_evaluated())
-                return static_cast<T>(_byteswap_ulong(static_cast<uint32_t>(v)));
-        }
+            return static_cast<T>(_byteswap_ulong(static_cast<uint32_t>(v)));
         if constexpr (sizeof(T) == 8)
-        {
-            if (!std::is_constant_evaluated())
-                return static_cast<T>(_byteswap_uint64(static_cast<uint64_t>(v)));
-        }
+            return static_cast<T>(_byteswap_uint64(static_cast<uint64_t>(v)));
     }
 #elif defined(__ARM_NEON)
-    if (cpu_features::has_neon())
+    if (!std::is_constant_evaluated() && cpu_features::has_neon())
     {
         if constexpr (sizeof(T) == 2)
         {
@@ -687,6 +685,8 @@ to_big(const basic_endian<T>& v) noexcept { return v.big(); }
 namespace literals
 {
 
+// Usage:  auto v = 0xDEADBEEF_le;   auto w = 0xDEADBEEF_be;
+// Note:   combine with static_cast<> or U suffix, NOT with 'ull' suffix
 [[nodiscard]] constexpr auto operator""_le(unsigned long long value) noexcept
 {
     return basic_endian<uint64_t>(static_cast<uint64_t>(value));
