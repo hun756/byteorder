@@ -189,7 +189,7 @@ TEST(NetworkOrder, HostToNetworkRoundtrip32)
 
 TEST(NetworkOrder, ByteOrderIsAlwaysBig)
 {
-    EXPECT_EQ(basic_endian<uint32_t>::network_order::byte_order, std::endian::big);
+    EXPECT_EQ(basic_endian<uint32_t>::network_order::endian_value, std::endian::big);
 }
 
 // ============================================================================

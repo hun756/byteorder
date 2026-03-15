@@ -95,10 +95,18 @@ public:
 namespace detail
 {
 
-// AVX-512 and AVX2 runtime detection is delegated to simd_feature_check:
-//   simd::detail::CPUInfo::has_avx512f()  — AVX-512 Foundation
-//   simd::detail::CPUInfo::has_avx2()     — AVX2
-// ARM NEON / SVE are compile-time-only features; no runtime probe needed.
+// Thin compatibility wrappers so existing code (and tests) can keep using
+// endian::detail::has_avx2() / has_avx512() / has_neon() / has_sve().
+// Internally they delegate to simd_feature_check or compile-time macros.
+[[nodiscard]] inline bool has_avx2() noexcept
+{
+    return simd::detail::CPUInfo::has_avx2();
+}
+
+[[nodiscard]] inline bool has_avx512() noexcept
+{
+    return simd::detail::CPUInfo::has_avx512f();
+}
 
 [[nodiscard]] inline bool has_neon() noexcept
 {
@@ -308,7 +316,7 @@ template <FloatingPointByteSwappable T>
 }
 
 template <IntegralByteSwappable T>
-ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast(T* ENDIAN_RESTRICT src,
+ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast(const T* ENDIAN_RESTRICT src,
                                                  T* ENDIAN_RESTRICT dst,
                                                  size_t count) noexcept
 {
@@ -377,7 +385,7 @@ ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast(T* ENDIAN_RESTRICT src,
 }
 
 template <IntegralByteSwappable T>
-ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_16(T* ENDIAN_RESTRICT src,
+ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_16(const T* ENDIAN_RESTRICT src,
                                                     T* ENDIAN_RESTRICT dst,
                                                     size_t count) noexcept
 {
@@ -419,7 +427,7 @@ ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_16(T* ENDIAN_RESTRICT src,
 }
 
 template <IntegralByteSwappable T>
-ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_64(T* ENDIAN_RESTRICT src,
+ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_64(const T* ENDIAN_RESTRICT src,
                                                     T* ENDIAN_RESTRICT dst,
                                                     size_t count) noexcept
 {
@@ -587,11 +595,10 @@ struct ENDIAN_ALIGNED(hardware_destructive_interference_size) cache_line_padded
     constexpr cache_line_padded() noexcept : value{} {}
     constexpr explicit cache_line_padded(T v) noexcept : value(v) {}
 
-    [[nodiscard]] constexpr T& operator*() noexcept { return value; }
-    [[nodiscard]] constexpr const T& operator*() const noexcept { return value; }
-
-    [[nodiscard]] T* operator&() noexcept { return &value; }
-    [[nodiscard]] const T* operator&() const noexcept { return &value; }
+    T* operator&() noexcept { return &value; }
+    const T* operator&() const noexcept { return &value; }
+    T& operator*() noexcept { return value; }
+    const T& operator*() const noexcept { return value; }
 };
 
 template <typename T>
@@ -1376,21 +1383,21 @@ class endian_iterator_proxy
 
 public:
     using iterator_category = std::random_access_iterator_tag;
-    using value_type        = basic_endian<T>;
+    using value_type        = basic_endian<std::remove_const_t<T>>;
     using difference_type   = std::ptrdiff_t;
-    using pointer           = value_type*;
-    using reference         = value_type&;
+    using pointer           = std::conditional_t<std::is_const_v<T>, const value_type*, value_type*>;
+    using reference         = std::conditional_t<std::is_const_v<T>, const value_type&, value_type&>;
 
     explicit endian_iterator_proxy(T* ptr) noexcept : ptr_(ptr) {}
 
     reference operator*() const noexcept
     {
-        return *reinterpret_cast<value_type*>(ptr_);
+        return *reinterpret_cast<pointer>(ptr_);
     }
 
     pointer operator->() const noexcept
     {
-        return reinterpret_cast<value_type*>(ptr_);
+        return reinterpret_cast<pointer>(ptr_);
     }
 
     endian_iterator_proxy& operator++() noexcept

@@ -138,10 +138,33 @@ macro(setup_simd_feature_check)
         GIT_SHALLOW    TRUE             # Only download the latest commit (faster)
     )
 
-    # Disable everything we don't need from simd_feature_check to speed up build
+    # -----------------------------------------------------------------------
+    # Isolate simd_feature_check from our build settings:
+    #
+    # 1. Save and restore BUILD_* options — setting them to OFF with FORCE
+    #    would otherwise permanently override our preset / -D values, causing
+    #    our own tests/examples to silently disappear from the build.
+    #
+    # 2. Clear CMAKE_MODULE_PATH while the subdirectory is processed so that
+    #    simd_feature_check's include(Packaging) picks up its OWN
+    #    cmake/Packaging.cmake instead of ours (which would trigger a
+    #    "CPack.cmake has already been included" warning/error).
+    # -----------------------------------------------------------------------
+    set(_sfc_saved_BUILD_EXAMPLES   ${BUILD_EXAMPLES})
+    set(_sfc_saved_BUILD_TESTS      ${BUILD_TESTS})
+    set(_sfc_saved_BUILD_BENCHMARKS ${BUILD_BENCHMARKS})
+    set(_sfc_saved_MODULE_PATH      "${CMAKE_MODULE_PATH}")
+
     set(BUILD_EXAMPLES   OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTS      OFF CACHE BOOL "" FORCE)
     set(BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    set(CMAKE_MODULE_PATH "")          # simd_feature_check will re-add its own cmake/
 
     FetchContent_MakeAvailable(simd_feature_check)
+
+    # Restore everything to what the parent project had
+    set(CMAKE_MODULE_PATH "${_sfc_saved_MODULE_PATH}")
+    set(BUILD_EXAMPLES   ${_sfc_saved_BUILD_EXAMPLES}   CACHE BOOL "" FORCE)
+    set(BUILD_TESTS      ${_sfc_saved_BUILD_TESTS}      CACHE BOOL "" FORCE)
+    set(BUILD_BENCHMARKS ${_sfc_saved_BUILD_BENCHMARKS} CACHE BOOL "" FORCE)
 endmacro()

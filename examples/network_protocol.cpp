@@ -176,7 +176,7 @@ static void demo_batch_header_encoding()
     {
         auto frame_span = std::span(wire_buffer).subspan(i * HEADER_SIZE, HEADER_SIZE);
         FrameHeader decoded = decode_header(std::span<const std::byte, HEADER_SIZE>(
-            reinterpret_cast<const std::byte*>(frame_span.data())));
+            reinterpret_cast<const std::byte*>(frame_span.data()), HEADER_SIZE));
 
         std::cout << "  Frame " << i << ": magic=0x" << std::hex << decoded.magic
                   << ", version=0x" << decoded.version
