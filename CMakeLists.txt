@@ -3,7 +3,7 @@
 # ============================================================================
 #
 # High-performance, header-only C++20 byte-order (endianness) conversion
-# library with SIMD acceleration (AVX2 / ARM NEON).
+# library with SIMD acceleration (AVX-512 / AVX2 / ARM NEON / SVE).
 #
 # QUICK START:
 #   cmake --preset debug            # Configure with debug preset
@@ -22,6 +22,8 @@
 #   -DENABLE_COVERAGE=ON|OFF       - Enable code coverage reporting
 #   -DENABLE_SANITIZERS=ON|OFF     - Enable sanitizers in debug builds
 #   -DENABLE_LTO=ON|OFF            - Enable Link Time Optimization
+#   -DENABLE_AVX512=ON|OFF         - Enable AVX-512 optimizations (x86_64)
+#   -DENABLE_NATIVE_OPTIMIZATIONS=ON|OFF - Enable -march=native optimizations
 #
 # ============================================================================
 
@@ -48,7 +50,7 @@ set(PROJECT_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT
 # These values are used by CPack, Doxygen, and install targets
 project(byteorder
     VERSION ${PROJECT_VERSION}
-    DESCRIPTION "High-performance C++20 header-only byte-order conversion library"
+    DESCRIPTION "High-performance C++20 header-only byte-order conversion library with SIMD acceleration"
     HOMEPAGE_URL "https://github.com/korbolkoinc/byteorder"
     LANGUAGES CXX
 )
@@ -79,6 +81,9 @@ option(BUILD_BENCHMARKS "Build performance benchmark programs" OFF)
 option(ENABLE_SANITIZERS "Enable sanitizers (ASan, UBSan) in debug builds" OFF)
 option(ENABLE_PCH "Enable precompiled headers to speed up compilation" OFF)
 option(ENABLE_LTO "Enable Link Time Optimization for release builds" OFF)
+option(ENABLE_AVX512 "Enable AVX-512 optimizations for x86_64 platforms" OFF)
+option(ENABLE_NATIVE_OPTIMIZATIONS "Enable -march=native for maximum performance" OFF)
+option(ENABLE_SVE "Enable ARM SVE optimizations for ARM platforms" OFF)
 
 # ============================================================================
 # Output Directory Configuration
@@ -121,10 +126,10 @@ configure_file(
 )
 
 # ============================================================================
-# Library Target  (header-only — INTERFACE)
+# Library Target (header-only — INTERFACE)
 # ============================================================================
 # byteorder is a header-only template library; no source files are compiled
-# into the library itself.  The INTERFACE target propagates include paths and
+# into the library itself. The INTERFACE target propagates include paths and
 # C++ standard requirements to every consumer automatically.
 add_library(${PROJECT_NAME} INTERFACE)
 
@@ -144,7 +149,54 @@ target_include_directories(${PROJECT_NAME} INTERFACE
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_20)
 
 # ============================================================================
-# Main Executable  (demo / smoke-test)
+# Architecture-specific optimizations
+# ============================================================================
+# Enable maximum performance optimizations for native builds.
+# Use -DENABLE_NATIVE_OPTIMIZATIONS=ON for best performance on the build machine.
+if(ENABLE_NATIVE_OPTIMIZATIONS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${PROJECT_NAME} INTERFACE -march=native)
+        message(STATUS "byteorder: Native optimizations enabled (-march=native)")
+    elseif(MSVC)
+        target_compile_options(${PROJECT_NAME} INTERFACE /arch:AVX2)
+        message(STATUS "byteorder: AVX2 optimizations enabled (/arch:AVX2)")
+    endif()
+endif()
+
+# Enable AVX-512 optimizations for x86_64 platforms.
+# Use -DENABLE_AVX512=ON for servers and high-performance computing.
+if(ENABLE_AVX512)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${PROJECT_NAME} INTERFACE -mavx512f -mavx512bw -mavx512vl)
+            target_compile_definitions(${PROJECT_NAME} INTERFACE __AVX512F__)
+            message(STATUS "byteorder: AVX-512 optimizations enabled")
+        elseif(MSVC)
+            target_compile_options(${PROJECT_NAME} INTERFACE /arch:AVX512)
+            target_compile_definitions(${PROJECT_NAME} INTERFACE __AVX512F__)
+            message(STATUS "byteorder: AVX-512 optimizations enabled (MSVC)")
+        endif()
+    else()
+        message(WARNING "byteorder: AVX-512 is only supported on x86_64 platforms")
+    endif()
+endif()
+
+# Enable ARM SVE (Scalable Vector Extension) for ARM64 platforms.
+# Use -DENABLE_SVE=ON for ARM-based servers and high-performance devices.
+if(ENABLE_SVE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64|arm64")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(${PROJECT_NAME} INTERFACE -march=armv8-a+sve)
+            target_compile_definitions(${PROJECT_NAME} INTERFACE __ARM_FEATURE_SVE=1)
+            message(STATUS "byteorder: ARM SVE optimizations enabled")
+        endif()
+    else()
+        message(WARNING "byteorder: ARM SVE is only supported on ARM64 platforms")
+    endif()
+endif()
+
+# ============================================================================
+# Main Executable (demo / smoke-test)
 # ============================================================================
 add_executable(${PROJECT_NAME}_exe src/main.cpp)
 target_link_libraries(${PROJECT_NAME}_exe PRIVATE ${PROJECT_NAME})
@@ -192,8 +244,8 @@ endif()
 # After building, run: cmake --install build/ --prefix /usr/local
 #
 # The installed package can then be used by other CMake projects:
-#   find_package(cpp_project_template REQUIRED)
-#   target_link_libraries(your_target PRIVATE cpp_project_template::cpp_project_template)
+#   find_package(byteorder REQUIRED)
+#   target_link_libraries(your_target PRIVATE byteorder::byteorder)
 
 # GNUInstallDirs provides standard installation directory variables
 # (CMAKE_INSTALL_BINDIR, CMAKE_INSTALL_LIBDIR, CMAKE_INSTALL_INCLUDEDIR)
@@ -242,3 +294,22 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
 )
+
+# ============================================================================
+# Print configuration summary
+# ============================================================================
+# Display a summary of the current build configuration for easy verification.
+message(STATUS "")
+message(STATUS "byteorder ${PROJECT_VERSION} configuration summary:")
+message(STATUS "  Build type:        ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Compiler:          ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "  C++ Standard:      ${CMAKE_CXX_STANDARD}")
+message(STATUS "  Build examples:    ${BUILD_EXAMPLES}")
+message(STATUS "  Build tests:       ${BUILD_TESTS}")
+message(STATUS "  Build benchmarks:  ${BUILD_BENCHMARKS}")
+message(STATUS "  Enable sanitizers: ${ENABLE_SANITIZERS}")
+message(STATUS "  Enable LTO:        ${ENABLE_LTO}")
+message(STATUS "  Enable AVX-512:    ${ENABLE_AVX512}")
+message(STATUS "  Enable native opt: ${ENABLE_NATIVE_OPTIMIZATIONS}")
+message(STATUS "  Enable SVE:        ${ENABLE_SVE}")
+message(STATUS "")
