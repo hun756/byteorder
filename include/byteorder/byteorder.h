@@ -14,24 +14,9 @@
 #include <utility>
 #include <version>
 
-#if defined(_MSC_VER)
-#  include <intrin.h>
-#endif
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-#  include <immintrin.h>
-#  if defined(__GNUC__) || defined(__clang__)
-#    include <cpuid.h>
-#  endif
-#endif
-#if defined(__ARM_NEON) || defined(__ARM_NEON__)
-#  include <arm_neon.h>
-#endif
-#if defined(__ARM_FEATURE_SVE)
-#  include <arm_sve.h>
-#endif
-#if defined(__AVX512F__)
-#  include <avx512fintrin.h>
-#endif
+// Platform-specific SIMD intrinsics and CPU feature detection
+// are provided by simd_feature_check (see cmake/Dependencies.cmake).
+#include <simd/feature_check.hpp>
 
 #if defined(_MSC_VER)
 #  define ENDIAN_ALWAYS_INLINE  __forceinline
@@ -110,43 +95,10 @@ public:
 namespace detail
 {
 
-[[nodiscard]] inline bool has_avx512() noexcept
-{
-#if defined(__AVX512F__)
-#  if defined(_MSC_VER)
-    int cpu_info[4];
-    __cpuid(cpu_info, 7);
-    return (cpu_info[1] & (1 << 16)) != 0;
-#  elif defined(__GNUC__) || defined(__clang__)
-    unsigned int eax, ebx, ecx, edx;
-    __get_cpuid(7, &eax, &ebx, &ecx, &edx);
-    return (ebx & (1 << 16)) != 0;
-#  else
-    return true;
-#  endif
-#else
-    return false;
-#endif
-}
-
-[[nodiscard]] inline bool has_avx2() noexcept
-{
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-#  if defined(_MSC_VER)
-    int cpu_info[4];
-    __cpuid(cpu_info, 7);
-    return (cpu_info[1] & (1 << 5)) != 0;
-#  elif defined(__GNUC__) || defined(__clang__)
-    unsigned int eax, ebx, ecx, edx;
-    __get_cpuid(7, &eax, &ebx, &ecx, &edx);
-    return (ebx & (1 << 5)) != 0;
-#  else
-    return true;
-#  endif
-#else
-    return false;
-#endif
-}
+// AVX-512 and AVX2 runtime detection is delegated to simd_feature_check:
+//   simd::detail::CPUInfo::has_avx512f()  — AVX-512 Foundation
+//   simd::detail::CPUInfo::has_avx2()     — AVX2
+// ARM NEON / SVE are compile-time-only features; no runtime probe needed.
 
 [[nodiscard]] inline bool has_neon() noexcept
 {
@@ -188,22 +140,7 @@ struct simd_traits
     static constexpr size_t alignment   = alignof(T);
 };
 
-#if defined(__AVX512F__)
-template <>
-struct simd_traits<uint32_t>
-{
-    static constexpr size_t vector_size = 16;
-    static constexpr size_t alignment   = 64;
-};
-
-template <>
-struct simd_traits<uint64_t>
-{
-    static constexpr size_t vector_size = 8;
-    static constexpr size_t alignment   = 64;
-};
-#endif
-
+// uint16_t: 16 x u16 in 256-bit (AVX2)
 template <>
 struct simd_traits<uint16_t>
 {
@@ -211,19 +148,36 @@ struct simd_traits<uint16_t>
     static constexpr size_t alignment   = 32;
 };
 
+// uint32_t / uint64_t: sizes differ between AVX-512 and AVX2
+#if defined(__AVX512F__)
 template <>
 struct simd_traits<uint32_t>
 {
-    static constexpr size_t vector_size = 8;
+    static constexpr size_t vector_size = 16;  // 16 x u32 in 512-bit
+    static constexpr size_t alignment   = 64;
+};
+
+template <>
+struct simd_traits<uint64_t>
+{
+    static constexpr size_t vector_size = 8;   // 8 x u64 in 512-bit
+    static constexpr size_t alignment   = 64;
+};
+#else
+template <>
+struct simd_traits<uint32_t>
+{
+    static constexpr size_t vector_size = 8;   // 8 x u32 in 256-bit (AVX2)
     static constexpr size_t alignment   = 32;
 };
 
 template <>
 struct simd_traits<uint64_t>
 {
-    static constexpr size_t vector_size = 4;
+    static constexpr size_t vector_size = 4;   // 4 x u64 in 256-bit (AVX2)
     static constexpr size_t alignment   = 32;
 };
+#endif
 
 template <IntegralByteSwappable T>
 [[nodiscard]] ENDIAN_ALWAYS_INLINE consteval T byte_swap_consteval(T v) noexcept
@@ -359,7 +313,7 @@ ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast(T* ENDIAN_RESTRICT src,
                                                  size_t count) noexcept
 {
 #if defined(__AVX512F__)
-    if (!std::is_constant_evaluated() && has_avx512() && sizeof(T) == 4)
+    if (!std::is_constant_evaluated() && simd::detail::CPUInfo::has_avx512f() && sizeof(T) == 4)
     {
         const __m512i shuf = _mm512_set_epi8(
             28, 29, 30, 31, 24, 25, 26, 27, 20, 21, 22, 23, 16, 17, 18, 19,
@@ -381,7 +335,7 @@ ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast(T* ENDIAN_RESTRICT src,
 #endif
 
 #if defined(__x86_64__) || defined(_M_X64)
-    if (!std::is_constant_evaluated() && has_avx2() && sizeof(T) == 4)
+    if (!std::is_constant_evaluated() && simd::detail::CPUInfo::has_avx2() && sizeof(T) == 4)
     {
         const __m256i shuf = _mm256_set_epi8(
             28, 29, 30, 31, 24, 25, 26, 27,
@@ -428,7 +382,7 @@ ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_16(T* ENDIAN_RESTRICT src,
                                                     size_t count) noexcept
 {
 #if defined(__x86_64__) || defined(_M_X64)
-    if (!std::is_constant_evaluated() && has_avx2())
+    if (!std::is_constant_evaluated() && simd::detail::CPUInfo::has_avx2())
     {
         size_t i = 0;
         for (; i + 15 < count; i += 16)
@@ -470,7 +424,7 @@ ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_64(T* ENDIAN_RESTRICT src,
                                                     size_t count) noexcept
 {
 #if defined(__AVX512F__)
-    if (!std::is_constant_evaluated() && has_avx512())
+    if (!std::is_constant_evaluated() && simd::detail::CPUInfo::has_avx512f())
     {
         const __m512i shuf = _mm512_set_epi8(
             56, 57, 58, 59, 60, 61, 62, 63,
@@ -496,7 +450,7 @@ ENDIAN_ALWAYS_INLINE void byte_swap_scalar_fast_64(T* ENDIAN_RESTRICT src,
 #endif
 
 #if defined(__x86_64__) || defined(_M_X64)
-    if (!std::is_constant_evaluated() && has_avx2())
+    if (!std::is_constant_evaluated() && simd::detail::CPUInfo::has_avx2())
     {
         const __m256i shuf = _mm256_set_epi8(
             24, 25, 26, 27, 28, 29, 30, 31,
@@ -633,8 +587,11 @@ struct ENDIAN_ALIGNED(hardware_destructive_interference_size) cache_line_padded
     constexpr cache_line_padded() noexcept : value{} {}
     constexpr explicit cache_line_padded(T v) noexcept : value(v) {}
 
-    T* operator&() noexcept { return &value; }
-    const T* operator&() const noexcept { return &value; }
+    [[nodiscard]] constexpr T& operator*() noexcept { return value; }
+    [[nodiscard]] constexpr const T& operator*() const noexcept { return value; }
+
+    [[nodiscard]] T* operator&() noexcept { return &value; }
+    [[nodiscard]] const T* operator&() const noexcept { return &value; }
 };
 
 template <typename T>
@@ -765,7 +722,7 @@ void batch_byte_swap_nt(
         return;
 
 #if defined(__x86_64__) || defined(_M_X64)
-    if (!std::is_constant_evaluated() && has_avx2())
+    if (!std::is_constant_evaluated() && simd::detail::CPUInfo::has_avx2())
     {
         if constexpr (sizeof(T) == 4)
         {

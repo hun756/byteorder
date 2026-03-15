@@ -113,6 +113,7 @@ include(StaticAnalyzers)     # Static analysis tools (cppcheck, clang-tidy, IWYU
 include(LTO)                 # Link Time Optimization for smaller/faster binaries
 include(Coverage)            # Code coverage instrumentation and report generation
 include(Packaging)           # CPack packaging (DEB, RPM, NSIS, ZIP, TGZ)
+include(Dependencies)        # External dependency manager (GTest, Benchmark, simd_feature_check)
 
 # ============================================================================
 # Generated Configuration Headers
@@ -147,6 +148,16 @@ target_include_directories(${PROJECT_NAME} INTERFACE
 
 # Require C++20 from any target that links to this library
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_20)
+
+# ============================================================================
+# simd_feature_check Dependency
+# ============================================================================
+# byteorder.h uses simd_feature_check for portable runtime CPU feature detection
+# (AVX2, AVX-512F, etc.) instead of hand-rolled cpuid intrinsics.
+# Because byteorder is an INTERFACE library, every consumer automatically
+# inherits this dependency through the INTERFACE link below.
+setup_simd_feature_check()
+target_link_libraries(${PROJECT_NAME} INTERFACE simd_featrue_check)
 
 # ============================================================================
 # Architecture-specific optimizations
