@@ -1,0 +1,25 @@
+---
+# Clangd configuration
+
+CompileFlags:
+  # Use the compile_commands.json from build/debug directory if it exists
+  # On Windows/MSVC, this file is not generated, so we add include paths manually
+  CompilationDatabase: build/debug
+
+  # Add include paths for all dependencies
+  Add:
+    # Main include directory
+    - -I${workspaceFolder}/include
+    # Generated config header
+    - -I${workspaceFolder}/build/debug/generated
+    # simd_feature_check include path
+    - -I${workspaceFolder}/build/debug/_deps/simd_feature_check-src/include
+    # GoogleTest and GoogleMock include paths
+    - -I${workspaceFolder}/build/debug/_deps/googletest-src/googletest/include
+    - -I${workspaceFolder}/build/debug/_deps/googletest-src/googlemock/include
+    - -isystem${workspaceFolder}/build/debug/_deps/googletest-src/googletest/include
+    - -isystem${workspaceFolder}/build/debug/_deps/googletest-src/googlemock/include
+
+# Improve diagnostics
+Diagnostics:
+  UnusedIncludes: Strict
